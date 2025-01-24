@@ -1,3 +1,5 @@
+
+
 /*
 请注意，你的代码不能出现任何 int/short/char/float/double/auto 等局部变量/函数传参，我们仅允许使用 reg 定义的寄存器变量。
 其中 reg 等价于一个 int。
@@ -39,20 +41,46 @@ void gemm_case0(ptr_reg A, ptr_reg B, ptr_reg C, ptr_reg buffer) {  // allocate 
 #undef n
 #undef p
 
+#define TILE_SIZE_M 8
+#define TILE_SIZE_N 8
+#define TILE_SIZE_P 8
+#define PREFETCH_DISTANCE 8
 #define m case1_m
 #define n case1_n
 #define p case1_p
 
 void gemm_case1(ptr_reg A, ptr_reg B, ptr_reg C, ptr_reg buffer) {
-    for (reg i = 0; i < m; ++i) {
-        for (reg j = 0; j < p; ++j) {
-            reg tmpc = 0;
-            for (reg k = 0; k < n; ++k) {
-                reg tmpa = A[i * n + k];
-                reg tmpb = B[k * p + j];
-                tmpc += tmpa * tmpb;
+    for (reg bi = 0; bi < m; bi += TILE_SIZE_M) {
+        for (reg bj = 0; bj < p; bj += TILE_SIZE_N) {
+            for (reg bk = 0; bk < n; bk += TILE_SIZE_P) {
+                for (reg ii = 0; ii < TILE_SIZE_M && bi + ii < m; ++ii) {
+                    reg temp_row[TILE_SIZE_N] = {0};
+                    for (reg kk = 0; kk < TILE_SIZE_P && bk + kk < n; kk += 2) {
+                        if (kk + PREFETCH_DISTANCE < TILE_SIZE_P && bk + kk + PREFETCH_DISTANCE < n) {
+                            reg _ = A[(bi + ii) * n + (bk + kk + PREFETCH_DISTANCE)];
+                            _ = B[(bk + kk + PREFETCH_DISTANCE) * p + bj];
+                        }
+                        reg tmpa1 = A[(bi + ii) * n + (bk + kk)];
+                        reg tmpa2 = 0;
+                        if (kk + 1 < TILE_SIZE_P && bk + kk + 1 < n) {
+                            tmpa2 = A[(bi + ii) * n + (bk + kk + 1)];
+                        }
+                        for (reg jj = 0; jj < TILE_SIZE_N && bj + jj < p; ++jj) {
+                            reg tmpb1 = B[(bk + kk) * p + (bj + jj)];
+                            reg tmpb2 = 0;
+                            if (kk + 1 < TILE_SIZE_P && bk + kk + 1 < n) {
+                                tmpb2 = B[(bk + kk + 1) * p + (bj + jj)];
+                            }
+                            temp_row[jj] += tmpa1 * tmpb1 + tmpa2 * tmpb2;
+                        }
+                    }
+                    for (reg jj = 0; jj < TILE_SIZE_N && bj + jj < p; ++jj) {
+                        reg tmpc = C[(bi + ii) * p + (bj + jj)];
+                        tmpc += temp_row[jj];
+                        C[(bi + ii) * p + (bj + jj)] = tmpc;
+                    }
+                }
             }
-            C[i * p + j] = tmpc;
         }
     }
 }
@@ -60,21 +88,39 @@ void gemm_case1(ptr_reg A, ptr_reg B, ptr_reg C, ptr_reg buffer) {
 #undef m
 #undef n
 #undef p
+#undef TILE_SIZE_M
+#undef TILE_SIZE_N
+#undef TILE_SIZE_P
+#undef PREFETCH_DISTANCE
 
+#define TILE_SIZE_M 16
+#define TILE_SIZE_N 16
+#define TILE_SIZE_P 16
+#define PREFETCH_DISTANCE 16
 #define m case2_m
 #define n case2_n
 #define p case2_p
 
 void gemm_case2(ptr_reg A, ptr_reg B, ptr_reg C, ptr_reg buffer) {
-    for (reg i = 0; i < m; ++i) {
-        for (reg j = 0; j < p; ++j) {
-            reg tmpc = 0;
-            for (reg k = 0; k < n; ++k) {
-                reg tmpa = A[i * n + k];
-                reg tmpb = B[k * p + j];
-                tmpc += tmpa * tmpb;
+    for (reg bi = 0; bi < m; bi += TILE_SIZE_M) {
+        for (reg bj = 0; bj < p; bj += TILE_SIZE_N) {
+            for (reg bk = 0; bk < n; bk += TILE_SIZE_P) {
+                for (reg ii = 0; ii < TILE_SIZE_M && bi + ii < m; ++ii) {
+                    reg temp_row[TILE_SIZE_N] = {0};
+                    for (reg kk = 0; kk < TILE_SIZE_P && bk + kk < n; ++kk) {
+                        reg tmpa = A[(bi + ii) * n + (bk + kk)];
+                        for (reg jj = 0; jj < TILE_SIZE_N && bj + jj < p; ++jj) {
+                            reg tmpb = B[(bk + kk) * p + (bj + jj)];
+                            temp_row[jj] += tmpa * tmpb;
+                        }
+                    }
+                    for (reg jj = 0; jj < TILE_SIZE_N && bj + jj < p; ++jj) {
+                        reg tmpc1 = C[(bi + ii) * p + (bj + jj)];
+                        tmpc1 += temp_row[jj];
+                        C[(bi + ii) * p + (bj + jj)] = tmpc1;
+                    }
+                }
             }
-            C[i * p + j] = tmpc;
         }
     }
 }
@@ -82,21 +128,51 @@ void gemm_case2(ptr_reg A, ptr_reg B, ptr_reg C, ptr_reg buffer) {
 #undef m
 #undef n
 #undef p
+#undef TILE_SIZE_M
+#undef TILE_SIZE_N
+#undef TILE_SIZE_P
+#undef PREFETCH_DISTANCE
 
+#define TILE_SIZE_M 16
+#define TILE_SIZE_N 16
+#define TILE_SIZE_P 16
+#define PREFETCH_DISTANCE 16
 #define m case3_m
 #define n case3_n
 #define p case3_p
 
 void gemm_case3(ptr_reg A, ptr_reg B, ptr_reg C, ptr_reg buffer) {
-    for (reg i = 0; i < m; ++i) {
-        for (reg j = 0; j < p; ++j) {
-            reg tmpc = 0;
-            for (reg k = 0; k < n; ++k) {
-                reg tmpa = A[i * n + k];
-                reg tmpb = B[k * p + j];
-                tmpc += tmpa * tmpb;
+    for (reg bi = 0; bi < m; bi += TILE_SIZE_M) {
+        for (reg bj = 0; bj < p; bj += TILE_SIZE_N) {
+            for (reg bk = 0; bk < n; bk += TILE_SIZE_P) {
+                for (reg ii = 0; ii < TILE_SIZE_M && bi + ii < m; ++ii) {
+                    reg temp_row[TILE_SIZE_N] = {0};
+                    for (reg kk = 0; kk < TILE_SIZE_P && bk + kk < n; kk += 2) {
+                        if (kk + PREFETCH_DISTANCE < TILE_SIZE_P && bk + kk + PREFETCH_DISTANCE < n) {
+                            reg _ = A[(bi + ii) * n + (bk + kk + PREFETCH_DISTANCE)];
+                            _ = B[(bk + kk + PREFETCH_DISTANCE) * p + bj];
+                        }
+                        reg tmpa1 = A[(bi + ii) * n + (bk + kk)];
+                        reg tmpa2 = 0;
+                        if (kk + 1 < TILE_SIZE_P && bk + kk + 1 < n) {
+                            tmpa2 = A[(bi + ii) * n + (bk + kk + 1)];
+                        }
+                        for (reg jj = 0; jj < TILE_SIZE_N && bj + jj < p; ++jj) {
+                            reg tmpb1 = B[(bk + kk) * p + (bj + jj)];
+                            reg tmpb2 = 0;
+                            if (kk + 1 < TILE_SIZE_P && bk + kk + 1 < n) {
+                                tmpb2 = B[(bk + kk + 1) * p + (bj + jj)];
+                            }
+                            temp_row[jj] += tmpa1 * tmpb1 + tmpa2 * tmpb2;
+                        }
+                    }
+                    for (reg jj = 0; jj < TILE_SIZE_N && bj + jj < p; ++jj) {
+                        reg tmpc = C[(bi + ii) * p + (bj + jj)];
+                        tmpc += temp_row[jj];
+                        C[(bi + ii) * p + (bj + jj)] = tmpc;
+                    }
+                }
             }
-            C[i * p + j] = tmpc;
         }
     }
 }
@@ -104,3 +180,7 @@ void gemm_case3(ptr_reg A, ptr_reg B, ptr_reg C, ptr_reg buffer) {
 #undef m
 #undef n
 #undef p
+#undef TILE_SIZE_M
+#undef TILE_SIZE_N
+#undef TILE_SIZE_P
+#undef PREFETCH_DISTANCE
